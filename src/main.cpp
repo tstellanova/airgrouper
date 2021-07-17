@@ -48,7 +48,7 @@ static void sleep_control(uint32_t sleep_ms) {
   Serial.begin();
   SystemSleepWakeupReason wake_reason = sleep_res.wakeupReason();
   // allow some time for usb serial to wake from sleep
-  // delay(1000);
+  delay(1000);
 
   switch (wake_reason) {
     case SystemSleepWakeupReason::BY_RTC:
