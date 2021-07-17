@@ -30,50 +30,53 @@ constexpr size_t PUBLISH_CHUNK = 622;
 constexpr size_t JSON_BUF_LEN = ((PUBLISH_CHUNK + 8) / 4 ) * 4;
 static char json_writer_buf[JSON_BUF_LEN] = {};
 
+// maximum custom value encountered
+static double max_custom_val = 0;
+static double min_custom_val = 0;
+
 // control how long we sleep based on data collection and publication config
-// static void sleep_control(uint32_t sleep_ms) {
-//   sleep_cfg.mode(SystemSleepMode::ULTRA_LOW_POWER)
-//   // keep BLE active
-//     .ble()
-// 	// Wake on battery fuel gauge event, eg battery unplugged 
-//     // .gpio(LOW_BAT_UC, FALLING) 
-//     .duration(sleep_ms); //ms
+static void sleep_control(uint32_t sleep_ms) {
+  sleep_cfg.mode(SystemSleepMode::ULTRA_LOW_POWER)
+    .network(NETWORK_INTERFACE_CELLULAR)  // keep cellular active 
+    .ble() // keep BLE active
+    .duration(sleep_ms); 
   
-//   uint32_t sleep_start = millis();
-//   Log.info("sleep %lu ms", sleep_ms);
-//   SystemSleepResult sleep_res = System.sleep(sleep_cfg);
-//   SystemSleepWakeupReason wake_reason = sleep_res.wakeupReason();
-//   uint32_t sleep_actual = millis() - sleep_start;
-//   // allow some time for usb serial to wake from sleep
-//   Serial.begin();
-//   delay(3000);
-//   Log.info("sleep_actual: %lu", sleep_actual);
+  uint32_t sleep_start = millis();
+  Log.info("sleep %lu ms", sleep_ms);
+  SystemSleepResult sleep_res = System.sleep(sleep_cfg);
+  uint32_t sleep_actual = millis() - sleep_start;
+  Serial.begin();
+  SystemSleepWakeupReason wake_reason = sleep_res.wakeupReason();
+  // allow some time for usb serial to wake from sleep
+  // delay(1000);
 
-//   switch (wake_reason) {
-// 	case SystemSleepWakeupReason::BY_RTC:
-// 		Log.info("wakeup on RTC");
-// 		break;
-//     case SystemSleepWakeupReason::BY_GPIO:
-//       Log.info("GPIO wakeup pin: %u", sleep_res.wakeupPin());
-//       break;
-// 	case SystemSleepWakeupReason::BY_NETWORK:
-// 		Log.info("Network wakeup");
-// 		break;
+  switch (wake_reason) {
+    case SystemSleepWakeupReason::BY_RTC:
+      Log.info("wakeup on RTC");
+      break;
+    case SystemSleepWakeupReason::BY_GPIO:
+      Log.info("GPIO wakeup pin: %u", sleep_res.wakeupPin());
+      break;
+    case SystemSleepWakeupReason::BY_NETWORK:
+      Log.info("Network wakeup");
+      break;
 
-//     case SystemSleepWakeupReason::BY_ADC: 
-//     default: {
-//       Log.info("wakeup: %u", (uint16_t)wake_reason);
-//     }
-//     break;
-//   }
-// }
+    case SystemSleepWakeupReason::BY_ADC: 
+    default: {
+      Log.info("wakeup: %u", (uint16_t)wake_reason);
+    }
+    break;
+  }
+  Log.info("sleep_actual: %lu", sleep_actual);
+
+}
 
 
 static void scan_for_beacons() {
   uint16_t MAX_SCAN_TIME = 50; // 500 ms in units of 10 ms
 	BLE.setScanTimeout(MAX_SCAN_TIME);
 	int raw_scan_result = BLE.scan(scan_results, SCAN_RESULT_MAX);
-  Log.info("scanned: %d", raw_scan_result);
+  Log.trace("scanned: %d", raw_scan_result);
 
   if (raw_scan_result <= 0) {
     Log.warn("No BLE scan results: %d", raw_scan_result);
@@ -101,13 +104,19 @@ static void scan_for_beacons() {
 			// Byte: Internal packet identifier (0x55)
 			// 32-bit: custom data
 
-      Log.warn("len: %u expected: %u", len, CUSTOM_ADV_DATA_LEN);
+      // Log.warn("len: %u expected: %u", len, CUSTOM_ADV_DATA_LEN);
 
       // filter on company ID and internal packet identifier
 			if (buf[0] == 0xff && buf[1] == 0xff && buf[2] == 0x55) {
-        Log.warn("len: %u expected: %u", len, CUSTOM_ADV_DATA_LEN);
+        // Log.warn("len: %u expected: %u", len, CUSTOM_ADV_DATA_LEN);
 				double custom_data = 0;
 				memcpy(&custom_data, &buf[3], sizeof(custom_data));
+        if (custom_data > max_custom_val) {
+          max_custom_val = custom_data;
+        }
+        if (custom_data < min_custom_val) {
+          min_custom_val = custom_data;
+        }
 
         String addr_str = String::format("%02X:%02X:%02X:%02X:%02X:%02X",
           result.address[0], result.address[1], result.address[2],
@@ -144,6 +153,21 @@ static void scan_for_beacons() {
 
 }
 
+/// Read the current value of a registered cloud variable
+double readMaxValue() {
+  return max_custom_val;
+}
+
+double readMinValue() {
+  return min_custom_val;
+}
+
+/// Perform a device reset on demand from the network
+static int do_reset(String ignore) {
+  Log.info("Reset on network command");
+  System.reset();
+  return 0;
+}
 
 // setup() runs once, when the device is first turned on.
 void setup() {
@@ -152,6 +176,10 @@ void setup() {
   Log.info("=== begin ===");
   // enable BLE radio
   BLE.on();
+
+  Particle.function("reset", do_reset);
+  Particle.variable("maxValue", readMaxValue);
+  Particle.variable("minValue", readMinValue);
 
 }
 
@@ -163,9 +191,11 @@ void loop() {
   // sleep
   if (!Particle.connected()) {
     Particle.connect();
+    delay(3000);
   }
-  scan_for_beacons();
-  // sleep_control(3000);
-  delay(3000);
+  else {
+    scan_for_beacons();
+    sleep_control(12000);
+  }
 }
 
