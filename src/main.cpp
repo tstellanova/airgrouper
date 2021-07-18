@@ -13,7 +13,7 @@ SYSTEM_MODE(SEMI_AUTOMATIC);
 // max number of BLE scan results supported
 const size_t SCAN_RESULT_MAX = 30;
 // our custom adv data length
-const size_t CUSTOM_ADV_DATA_LEN = 11;
+const size_t CUSTOM_ADV_DATA_LEN = 7;
 
 // SerialLogHandler logHandler(LOG_LEVEL_INFO);
 SerialLogHandler logHandler(115200, LOG_LEVEL_INFO,
@@ -97,8 +97,7 @@ static void scan_for_beacons() {
     BleScanResult result = scan_results[beacon_idx];
 		len = result.advertisingData.get(BleAdvertisingDataType::MANUFACTURER_SPECIFIC_DATA, buf, BLE_MAX_ADV_DATA_LEN);
 		if (len == CUSTOM_ADV_DATA_LEN) {
-			// We have manufacturer-specific advertising data (0xff) a
-
+			// We have manufacturer-specific advertising data  
 			// Byte: BLE_SIG_AD_TYPE_MANUFACTURER_SPECIFIC_DATA (0xff)
 			// 16-bit: Company ID (0xffff)
 			// Byte: Internal packet identifier (0x55)
@@ -109,7 +108,7 @@ static void scan_for_beacons() {
       // filter on company ID and internal packet identifier
 			if (buf[0] == 0xff && buf[1] == 0xff && buf[2] == 0x55) {
         // Log.warn("len: %u expected: %u", len, CUSTOM_ADV_DATA_LEN);
-				double custom_data = 0;
+				uint32_t custom_data = 0;
 				memcpy(&custom_data, &buf[3], sizeof(custom_data));
         if (custom_data > max_custom_val) {
           max_custom_val = custom_data;
@@ -121,11 +120,11 @@ static void scan_for_beacons() {
         String addr_str = String::format("%02X:%02X:%02X:%02X:%02X:%02X",
           result.address[0], result.address[1], result.address[2],
           result.address[3], result.address[4], result.address[5]);
-				Log.info("device: %s custom_data: %0.3f rssi=%d ",
+				Log.info("beacon: %s airq: %lu rssi=%d ",
           addr_str.c_str(), custom_data, result.rssi);
 
           json_writer->name(addr_str).beginObject();
-          json_writer->name("custom").value(custom_data);
+          json_writer->name("airq").value((unsigned int)custom_data);
           json_writer->name("rssi").value(result.rssi);
           json_writer->endObject();
       }
