@@ -40,9 +40,10 @@ constexpr size_t PUBLISH_CHUNK = 622;
 constexpr size_t JSON_BUF_LEN = ((PUBLISH_CHUNK + 8) / 4 ) * 4;
 static char json_writer_buf[JSON_BUF_LEN] = {};
 
+constexpr double MAX_CUSTOM_VAL = std::numeric_limits<uint32_t>::max();
 // maximum custom value encountered
-static double max_custom_val = 0;
-static double min_custom_val = 0;
+static uint32_t max_custom_val = 0;
+static uint32_t min_custom_val = MAX_CUSTOM_VAL;
 
 // control how long we sleep based on data collection and publication config
 static void sleep_control(uint32_t sleep_ms) {
@@ -144,9 +145,13 @@ static void scan_for_beacons_and_publish() {
   }
 	
   // report the maximum and minimum values from this round
-  json_writer->name("max_value").value(max_custom_val);
-  json_writer->name("min_value").value(min_custom_val);
+  json_writer->name("max_value").value((unsigned int)max_custom_val);
+  json_writer->name("min_value").value((unsigned int)min_custom_val);
   json_writer->endObject();
+
+  //reset after publication
+  max_custom_val = 0;
+  min_custom_val = MAX_CUSTOM_VAL;
 
   size_t written_size = json_writer->dataSize();
   if (written_size > 4) {
