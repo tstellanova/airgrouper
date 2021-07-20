@@ -28,7 +28,8 @@ const size_t CUSTOM_ADV_DATA_LEN = 7;
 SerialLogHandler logHandler(115200, LOG_LEVEL_INFO,
     {
       {"app", LOG_LEVEL_INFO},
-      // {"gsm0710muxer", LOG_LEVEL_WARN},
+      {"comm.protocol", LOG_LEVEL_WARN},
+      {"gsm0710muxer", LOG_LEVEL_WARN},
     });
 
 static SystemSleepConfiguration sleep_cfg = {};
@@ -80,9 +81,9 @@ static void sleep_control(uint32_t sleep_ms) {
 
 }
 
-
-static void scan_for_beacons() {
-  uint16_t MAX_SCAN_TIME = 50; // 500 ms in units of 10 ms
+// Scan for available beacons and publish immediately
+static void scan_for_beacons_and_publish() {
+  uint16_t MAX_SCAN_TIME = 250; // 2500 ms in units of 10 ms
 	BLE.setScanTimeout(MAX_SCAN_TIME);
 	int raw_scan_result = BLE.scan(scan_results, SCAN_RESULT_MAX);
   Log.trace("scanned: %d", raw_scan_result);
@@ -142,6 +143,9 @@ static void scan_for_beacons() {
 
   }
 	
+  // report the maximum and minimum values from this round
+  json_writer->name("max_value").value(max_custom_val);
+  json_writer->name("min_value").value(min_custom_val);
   json_writer->endObject();
 
   size_t written_size = json_writer->dataSize();
@@ -202,8 +206,8 @@ void loop() {
     delay(3000);
   }
   else {
-    scan_for_beacons();
-    sleep_control(12000);
+    scan_for_beacons_and_publish();
+    sleep_control(5000);
   }
 }
 
