@@ -93,13 +93,14 @@ static void scan_for_beacons_and_publish() {
     Log.warn("No BLE scan results: %d", raw_scan_result);
     return;
   }
-  uint32_t count = (uint32_t)raw_scan_result;
+  uint32_t expected_count = (uint32_t)raw_scan_result;
+  uint32_t actual_count = 0;
   // zero the persistent json buffer before reusing
   memset((void*)json_writer_buf, 0, sizeof(json_writer_buf));
   JSONBufferWriter* json_writer = new JSONBufferWriter(json_writer_buf, PUBLISH_CHUNK);
   json_writer->beginObject();
 
-	for (size_t beacon_idx = 0; beacon_idx < count; beacon_idx++) {
+	for (size_t beacon_idx = 0; beacon_idx < expected_count; beacon_idx++) {
 		uint8_t buf[BLE_MAX_ADV_DATA_LEN];
 		size_t len;
 
@@ -138,20 +139,23 @@ static void scan_for_beacons_and_publish() {
           json_writer->name("airq").value((unsigned int)custom_data);
           json_writer->name("rssi").value(result.rssi);
           json_writer->endObject();
+
+          actual_count += 1;
       }
 		}
-
-
   }
 	
+  if (0 == actual_count) {
+    // provided beacon data was corrupt -- do not publish
+    return;
+  }
+
   // report the maximum and minimum values from this round
   json_writer->name("max_value").value((unsigned int)max_custom_val);
   json_writer->name("min_value").value((unsigned int)min_custom_val);
   json_writer->endObject();
 
-  //reset after publication
-  max_custom_val = 0;
-  min_custom_val = MAX_CUSTOM_VAL;
+  //TODO reset min and max values at some point
 
   size_t written_size = json_writer->dataSize();
   if (written_size > 4) {
@@ -202,15 +206,19 @@ void setup() {
 
 // loop() runs over and over again, as quickly as it can execute.
 void loop() {
+  static uint32_t reconnect_count = 0;
 
-  // connect to cloud
-  // publish collection
-  // sleep
   if (!Particle.connected()) {
+    if (reconnect_count > 20) {
+      Log.warn("Reset on poor network");
+      System.reset();
+    }
     Particle.connect();
     delay(3000);
+    reconnect_count += 1;
   }
   else {
+    reconnect_count = 0;
     scan_for_beacons_and_publish();
     sleep_control(5000);
   }
